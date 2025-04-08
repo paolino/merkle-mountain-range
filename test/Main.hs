@@ -11,22 +11,21 @@ import Data.ByteArray qualified as B
 import Data.ByteString (ByteString)
 import Data.Char (ord)
 import Data.Foldable (for_)
-import Data.MMR.InMemory
+import Data.MMR.InMemory.Core
     ( MMR
     , Status (Closed, Open)
     , add
-    , close
-    , delete
     , lefts
     , mkMMR
-    , open
     , orphans
     , proof
+    , remove
     , rights
+    , seal
+    , unseal
     , verify
     )
-import Data.MMR.SQL (Changes)
-import Data.MMR.Types (mkH)
+import Data.MMR.Types (Change (..), mkH)
 import Data.Map.Strict qualified as M
 import Data.Sequence (Seq)
 import Data.Set qualified as Set
@@ -67,7 +66,7 @@ messageGen cs = do
 inclusion :: ByteString -> MMR Closed -> Bool
 inclusion msg mmr = verify msg (proof msg mmr) mmr
 
-type W = WriterT (Seq Changes) IO
+type W = WriterT (Seq Change) IO
 
 runW :: WriterT w m a -> m (a, w)
 runW = runWriterT
@@ -121,19 +120,19 @@ main = hspec $ do
         it "contains only one orphan when closed"
             $ forAllMessageBlocks
             $ \msgs -> do
-                mmr <- evalW $ mkMMR' msgs >>= close
+                mmr <- evalW $ mkMMR' msgs >>= seal
                 length (orphans mmr) `shouldBe` 1
         it "can prove inclusion for any message in the MMR"
             $ forAllMessageBlocks
             $ \msgs -> do
-                (mmr, _) <- runW $ mkMMR' msgs >>= close
+                (mmr, _) <- runW $ mkMMR' msgs >>= seal
                 let included = Set.fromList msgs
                 for_ msgs $ \msg -> do
                     inclusion msg mmr `shouldBe` True
         it "cannot prove inclusion for any message not in the MMR"
             $ forAllMessageBlocks
             $ \msgs -> forAllMessages $ \msg -> do
-                mmr <- evalW $ mkMMR' msgs >>= close
+                mmr <- evalW $ mkMMR' msgs >>= seal
                 let included = Set.fromList msgs
                 unless (Set.member msg included) $ do
                     inclusion msg mmr `shouldBe` False
@@ -141,18 +140,18 @@ main = hspec $ do
             $ forAllMessageBlocks
             $ \msgs -> evalW $ do
                 open0 <- mkMMR' msgs
-                close0 <- close open0
-                open1 <- open close0
+                close0 <- seal open0
+                open1 <- unseal close0
                 liftIO $ open0 `shouldBe` open1
         it "can be expanded with new messages after close and open"
             $ forAllMessageBlocks
             $ \msgs ->
                 forAllMessageBlocks $ \newMsgs -> evalW $ do
                     open0 <- mkMMR' msgs
-                    close0 <- close open0
-                    open1 <- open close0
+                    close0 <- seal open0
+                    open1 <- unseal close0
                     open2 <- expand open1 newMsgs
-                    close1 <- close open2
+                    close1 <- seal open2
                     liftIO $ for_ (msgs <> newMsgs) $ \msg ->
                         inclusion msg close1 `shouldBe` True
         it "cannot prove inclusion of deleted messages"
@@ -160,15 +159,15 @@ main = hspec $ do
             $ \msgs -> forAll (elements msgs)
                 $ \msg -> evalW $ do
                     open0 <- mkMMR' msgs
-                    open1 <- delete msg open0
-                    close1 <- close open1
+                    open1 <- remove msg open0
+                    close1 <- seal open1
                     liftIO $ inclusion msg close1 `shouldBe` False
         it "can still prove inclusion of other messages after deletion"
             $ forAllMessageBlocks
             $ \msgs -> forAll (elements msgs)
                 $ \msg -> evalW $ do
                     open0 <- mkMMR' msgs
-                    open1 <- delete msg open0
-                    close1 <- close open1
+                    open1 <- remove msg open0
+                    close1 <- seal open1
                     liftIO $ for_ (Set.delete msg (Set.fromList msgs)) $ \m ->
                         inclusion m close1 `shouldBe` True

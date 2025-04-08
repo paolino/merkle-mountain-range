@@ -20,8 +20,11 @@ common warnings
 library
   import:           warnings
   exposed-modules:
-    Data.MMR.InMemory
-    Data.MMR.SQL
+    Data.MMR.InMemory.Oracle
+    Data.MMR.InMemory.Oracle.Core
+    Data.MMR.InMemory.User
+    Data.MMR.InMemory.User.Core
+    Data.MMR.Interface
     Data.MMR.Types
 
   build-depends:
@@ -32,6 +35,7 @@ library
     , lens
     , memory
     , mtl
+    , stm
     , transformers
 
   hs-source-dirs:   src

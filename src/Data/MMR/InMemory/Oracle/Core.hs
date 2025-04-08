@@ -7,41 +7,40 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module Data.MMR.InMemory
+module Data.MMR.InMemory.Oracle.Core
     ( -- * Types
-      Level
-    , MMR (rights, lefts, orphans)
-    , Proof
-    , Combine
+      MMR (rights, lefts, orphans)
     , Status (Closed, Open)
     , Seam (oldOrphans, removeRights, removeLefts)
 
       -- * create an MMR
-    , mkMMR
+    , emptyOracle
+    , top
+
+      -- * add and remove elements from an MMR
     , add
-    , delete
+    , remove
 
-      -- * closing and opening an MMR
-    , close
-    , open
-
-      -- * query an MMR
-    , root
-    , proof
-    , verify
-
-      -- * test data
+      -- * seal and unseal an MMR
+    , seal
+    , unseal
     ) where
 
 import Control.Lens (Lens', (%=))
 import Control.Monad (void, when)
-import Control.Monad.State (MonadState (..), StateT, execStateT)
+import Control.Monad.State.Strict
+    ( MonadState (..)
+    , StateT (..)
+    , execStateT
+    )
 import Control.Monad.Trans.Maybe (MaybeT (..), hoistMaybe)
-import Control.Monad.Writer (MonadTrans (..), MonadWriter (..))
+import Control.Monad.Writer
+    ( MonadTrans (..)
+    , MonadWriter (..)
+    )
 import Data.ByteString (ByteString)
-import Data.Foldable (Foldable (..), for_)
-import Data.MMR.SQL (Changes (..))
-import Data.MMR.Types (Hash, Level, mkH)
+import Data.Foldable (for_)
+import Data.MMR.Types (Change (..), Hash, Level, mkH)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as M
 import Data.Sequence (Seq)
@@ -100,42 +99,42 @@ orphansL :: Lens' (MMR a) (Map Level Hash)
 orphansL f mmr@MMR{orphans} = (\orphans' -> mmr{orphans = orphans'}) <$> f orphans
 
 insertRight
-    :: MonadWriter (Seq Changes) m => Hash -> Hash -> StateT (MMR a) m ()
+    :: MonadWriter (Seq Change) m => Hash -> Hash -> StateT (MMR a) m ()
 insertRight h h' = do
     push $ InsertRight h h'
     rightsL %= M.insert h h'
 
 deleteRight
-    :: MonadWriter (Seq Changes) m => Hash -> StateT (MMR a) m ()
+    :: MonadWriter (Seq Change) m => Hash -> StateT (MMR a) m ()
 deleteRight h = do
     push $ DeleteRight h
     rightsL %= M.delete h
 
 insertLeft
-    :: MonadWriter (Seq Changes) m => Hash -> Hash -> StateT (MMR a) m ()
+    :: MonadWriter (Seq Change) m => Hash -> Hash -> StateT (MMR a) m ()
 insertLeft h h' = do
     push $ InsertLeft h h'
     leftsL %= M.insert h h'
 
 deleteLeft
-    :: MonadWriter (Seq Changes) m => Hash -> StateT (MMR a) m ()
+    :: MonadWriter (Seq Change) m => Hash -> StateT (MMR a) m ()
 deleteLeft h = do
     push $ DeleteLeft h
     leftsL %= M.delete h
 
 insertOrphan
-    :: MonadWriter (Seq Changes) m => Level -> Hash -> StateT (MMR a) m ()
+    :: MonadWriter (Seq Change) m => Level -> Hash -> StateT (MMR a) m ()
 insertOrphan l h = orphansL %= M.insert l h
 
 deleteOrphan
-    :: MonadWriter (Seq Changes) m => Level -> StateT (MMR a) m ()
+    :: MonadWriter (Seq Change) m => Level -> StateT (MMR a) m ()
 deleteOrphan l = orphansL %= M.delete l
 
-push :: MonadWriter (Seq Changes) m => Changes -> m ()
+push :: MonadWriter (Seq Change) m => Change -> m ()
 push = tell . Seq.singleton
 
 addH
-    :: MonadWriter (Seq Changes) m
+    :: MonadWriter (Seq Change) m
     => Level
     -> Hash
     -> StateT (MMR Open) m ()
@@ -154,17 +153,17 @@ addH l h = do
 -- | Add a new element to the MMR. The element is hashed and stored in the
 -- MMR
 add
-    :: MonadWriter (Seq Changes) m => ByteString -> MMR Open -> m (MMR Open)
+    :: MonadWriter (Seq Change) m => ByteString -> MMR Open -> m (MMR Open)
 add v mmr = flip execStateT mmr $ addH 0 $ mkH v
 
 -- | Delete an element from the MMR. The element is hashed and removed from the
 -- MMR.
-delete
-    :: MonadWriter (Seq Changes) m => ByteString -> MMR Open -> m (MMR Open)
-delete v mmr = flip execStateT mmr $ climb 0 (mkH v) >>= mapM_ (uncurry addH)
+remove
+    :: MonadWriter (Seq Change) m => ByteString -> MMR Open -> m (MMR Open)
+remove v mmr = flip execStateT mmr $ climb 0 (mkH v) >>= mapM_ (uncurry addH)
 
 climb
-    :: (MonadWriter (Seq Changes) m)
+    :: (MonadWriter (Seq Change) m)
     => Level
     -> Hash
     -> StateT (MMR Open) m [(Level, Hash)]
@@ -186,49 +185,14 @@ climb l h = do
             rest <- climb (l + 1) (h <> h')
             pure $ (l, h') : rest
 
--- | A proof step
-data Combine = Prepend Hash | Append Hash
-    deriving (Show)
-
-combine :: Combine -> Hash -> Hash
-combine (Prepend h) h' = h <> h'
-combine (Append h) h' = h' <> h
-
--- | A proof is a list of steps to combine hashes to get the root hash of the MMR
-type Proof = [Combine]
-
-applyProof :: Proof -> Hash -> Hash
-applyProof ps h = foldl' (flip combine) h ps
-
-proofH :: Hash -> MMR Closed -> Proof
-proofH h mmr@MMR{rights, lefts} =
-    case M.lookup h rights of
-        Nothing -> case M.lookup h lefts of
-            Nothing -> []
-            Just h' -> Prepend h' : proofH (h' <> h) mmr
-        Just h' -> Append h' : proofH (h <> h') mmr
-
--- | Get the proof for a given hash in the MMR. The proof is a list of steps to
-proof :: ByteString -> MMR Closed -> Proof
-proof = proofH . mkH
-
 -- | Get the root hash of the MMR. The root hash is the hash of the entire MMR
-root :: MMR Closed -> Maybe (Level, Hash)
-root MMR{orphans} = M.lookupMax orphans
-
-verifyH :: Hash -> [Combine] -> MMR Closed -> Bool
-verifyH h path mmr = case root mmr of
-    Nothing -> False
-    Just (_l, h') -> applyProof path h == h'
-
--- | Verify a proof for a given hash in the MMR. The proof is a list of steps to
-verify :: ByteString -> Proof -> MMR Closed -> Bool
-verify = verifyH . mkH
+top :: MMR Closed -> Maybe Hash
+top MMR{orphans} = snd <$> M.lookupMax orphans
 
 -- | Create a new MMR from a list of facts (ordered by insertion). The MMR is
 -- created by hashing each fact and adding it to the MMR.
-mkMMR :: MMR Open
-mkMMR = MMR mempty mempty mempty ()
+emptyOracle :: MMR Open
+emptyOracle = MMR mempty mempty mempty ()
 
 seamL :: Lens' (MMR Closed) Seam
 seamL f mmr@MMR{seam} = (\seam' -> mmr{seam = seam'}) <$> f seam
@@ -243,7 +207,7 @@ removeLeftsL f seam@Seam{removeLefts} =
     (\removeLefts' -> seam{removeLefts = removeLefts'}) <$> f removeLefts
 
 closing
-    :: MonadWriter (Seq Changes) m => MaybeT (StateT (MMR Closed) m) ()
+    :: MonadWriter (Seq Change) m => MaybeT (StateT (MMR Closed) m) ()
 closing = do
     MMR{orphans} <- get
     (l, r) <- hoistMaybe $ M.lookupMin orphans
@@ -260,15 +224,15 @@ closing = do
 
 -- | Seam the MMR by removing the orphan nodes and making sure all nodes are
 -- connected. Also store the reverse operation in the seam field.
-close :: MonadWriter (Seq Changes) m => MMR Open -> m (MMR Closed)
-close MMR{rights, lefts, orphans} =
+seal :: MonadWriter (Seq Change) m => MMR Open -> m (MMR Closed)
+seal MMR{rights, lefts, orphans} =
     execStateT (void $ runMaybeT closing)
         $ MMR rights lefts orphans emptySeam{oldOrphans = orphans}
 
 -- | Unseam the MMR by restoring the orphan nodes. Apply and destroy the seam
 -- field. This is the reverse operation of 'seamup'.
-open :: MonadWriter (Seq Changes) m => MMR Closed -> m (MMR Open)
-open
+unseal :: MonadWriter (Seq Change) m => MMR Closed -> m (MMR Open)
+unseal
     MMR
         { rights
         , lefts
