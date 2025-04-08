@@ -36,8 +36,6 @@ cachix:
 cachix-parallel:
     ( nix build .#merkle-mountain-range -o merkle-mountain-range && \
         cachix push paolino ./merkle-mountain-range)&
-    ( nix build .#merkle-mountain-range-testing-client -o merkle-mountain-range-testing-client && \
-        cachix push paolino ./merkle-mountain-range-testing-client)&
     ( nix build .#merkle-mountain-range-tests -o merkle-mountain-range-tests&& \
         cachix push paolino ./merkle-mountain-range-tests)&
     ( nix bundle .#merkle-mountain-range && \
