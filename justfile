@@ -32,7 +32,12 @@ cachix:
     nix bundle --bundler github:NixOS/bundlers#toDockerImage .#merkle-mountain-range
     # shellcheck disable=SC1083
     cachix push paolino ./merkle-mountain-range-exe-merkle-mountain-range-{{version}}.tar.gz
-
+    nix build --no-link --print-out-paths .#fourmolu \
+        | cachix push paolino
+    nix build --no-link --print-out-paths .#cabal-fmt \
+        | cachix push paolino
+    nix build --no-link --print-out-paths .#nixfmt \
+        | cachix push paolino
 cachix-parallel:
     ( nix build .#merkle-mountain-range -o merkle-mountain-range && \
         cachix push paolino ./merkle-mountain-range)&
@@ -43,3 +48,10 @@ cachix-parallel:
     # shellcheck disable=SC1083
     ( nix bundle --bundler github:NixOS/bundlers#toDockerImage .#merkle-mountain-range && \
         cachix push paolino ./merkle-mountain-range-exe-merkle-mountain-range-{{version}}.tar.gz)&
+    ( nix build --no-link --print-out-paths .#fourmolu \
+        | cachix push paolino)&
+    ( nix build --no-link --print-out-paths .#cabal-fmt \
+        | cachix push paolino)&
+    ( nix build --no-link --print-out-paths .#nixfmt \
+        | cachix push paolino)&
+    wait

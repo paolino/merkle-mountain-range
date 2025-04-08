@@ -22,6 +22,27 @@ jobs:
       run: |
         nix build .#merkle-mountain-range-tests
         ./result/bin/merkle-mountain-range-tests
+
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: cachix/install-nix-action@v31
+      with:
+        github_access_token: ${{ secrets.GITHUB_TOKEN }}
+    - uses: cachix/cachix-action@v14
+      with:
+        name: ${{ env.CACHIX_REPO }}
+        authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+    - name: Run checks
+      run: |
+        nix shell .#nixfmt -c \
+          find . -name '*.nix' -exec nixfmt -c {} +
+        nix shell .#fourmolu -c \
+          fourmolu -c $(find . -name '*.hs')
+        nix shell .#cabal-fmt -c \
+          cabal-fmt -c $(find . -name '*.cabal')
+
   builds:
     runs-on: ubuntu-latest
     steps:

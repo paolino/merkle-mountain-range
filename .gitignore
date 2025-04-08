@@ -6,3 +6,4 @@ result
 merkle-mountain-range
 merkle-mountain-range-tests
 aiken/test/E2E/node_modules
+dev-profile*
