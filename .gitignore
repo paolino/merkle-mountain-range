@@ -1,0 +1,8 @@
+.vscode
+.direnv
+dist-newstyle
+merkle-mountain-range-exe-*
+result
+merkle-mountain-range
+merkle-mountain-range-tests
+aiken/test/E2E/node_modules

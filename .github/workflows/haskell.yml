@@ -1,0 +1,75 @@
+name: Haskell CI
+
+env:
+  VERSION: "0.1.0.0"
+  CACHIX_REPO: paolino
+on:
+  pull_request:
+  push:
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: cachix/install-nix-action@v31
+      with:
+        github_access_token: ${{ secrets.GITHUB_TOKEN }}
+    - uses: cachix/cachix-action@v14
+      with:
+        name: ${{ env.CACHIX_REPO }}
+        authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+    - name: Run tests
+      run: |
+        nix build .#merkle-mountain-range-tests
+        ./result/bin/merkle-mountain-range-tests
+  builds:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: cachix/install-nix-action@v31
+      with:
+        github_access_token: ${{ secrets.GITHUB_TOKEN }}
+    - uses: cachix/cachix-action@v14
+      with:
+        name: ${{ env.CACHIX_REPO }}
+        authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+
+    - name: Build
+      run: |
+        nix build .#merkle-mountain-range
+
+  bundles:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: cachix/install-nix-action@v31
+      with:
+        github_access_token: ${{ secrets.GITHUB_TOKEN }}
+    - uses: cachix/cachix-action@v14
+      with:
+        name: ${{ env.CACHIX_REPO }}
+        authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+
+    - name: Bundle merkle-mountain-range
+      run: |
+        nix bundle .#merkle-mountain-range
+        cp -L merkle-mountain-range-exe-merkle-mountain-range-arx merkle-mountain-range
+        rm merkle-mountain-range-exe-merkle-mountain-range-arx
+    - name: Archive merkle-mountain-range
+      uses: actions/upload-artifact@v4
+      with:
+        name: merkle-mountain-range
+        path: |
+          ./merkle-mountain-range
+    - name: Bundle merkle-mountain-range docker-image
+      run: |
+            nix bundle --bundler github:NixOS/bundlers#toDockerImage .#merkle-mountain-range
+            cp -L ./merkle-mountain-range-exe-merkle-mountain-range-${{ env.VERSION }}.tar.gz \
+              ./merkle-mountain-range-docker-image.tar.gz
+            rm ./merkle-mountain-range-exe-merkle-mountain-range-${{ env.VERSION }}.tar.gz
+    - name: Archive merkle-mountain-range docker-image
+      uses: actions/upload-artifact@v4
+      with:
+        name: merkle-mountain-range-docker-image
+        path: |
+          ./merkle-mountain-range-docker-image.tar.gz

@@ -1,0 +1,70 @@
+cabal-version:   3.4
+version:         0.1.0.0
+name:            merkle-mountain-range
+synopsis:
+  Reinforce OSS trust and cooperation on github by mapping assets on cardano blockchain
+
+homepage:        https://github.com/paolino/merkle-mountain-range
+license:         Apache-2.0
+license-file:    LICENSE
+author:          paolino
+maintainer:      paolo.veronelli@gmail.com
+category:        Web
+build-type:      Simple
+extra-doc-files: CHANGELOG.md
+
+common warnings
+  ghc-options: -Wall
+
+library
+  import:           warnings
+  exposed-modules:
+    Data.MMR.InMemory
+    Data.MMR.Types
+    Data.MMR.SQL
+  build-depends:
+    , base
+    , bytestring
+    , canonical-json
+    , containers
+    , crypton
+    , memory
+    , text
+    , mtl
+    , lens
+    , transformers
+
+  hs-source-dirs:   src
+  default-language: Haskell2010
+
+executable merkle-mountain-range
+  import:           warnings
+  main-is:          Main.hs
+  build-depends:
+    , base
+    , merkle-mountain-range
+
+  hs-source-dirs:   app
+  default-language: Haskell2010
+
+test-suite merkle-mountain-range-tests
+  type:             exitcode-stdio-1.0
+  import:           warnings
+  main-is:          Main.hs
+  build-depends:
+    , base
+    , bytestring
+    , containers
+    , crypton
+    , deepseq
+    , exceptions
+    , merkle-mountain-range
+    , hspec
+    , memory
+    , pretty-simple
+    , QuickCheck
+    , text
+    , mtl
+
+  hs-source-dirs:   test
+  default-language: Haskell2010
