@@ -14,24 +14,24 @@ build-type:      Simple
 extra-doc-files: CHANGELOG.md
 
 common warnings
-  ghc-options: -Wall
+  ghc-options:
+    -Wall -Wunused-imports -Wunused-packages -Wredundant-constraints
 
 library
   import:           warnings
   exposed-modules:
     Data.MMR.InMemory
-    Data.MMR.Types
     Data.MMR.SQL
+    Data.MMR.Types
+
   build-depends:
     , base
     , bytestring
-    , canonical-json
     , containers
     , crypton
-    , memory
-    , text
-    , mtl
     , lens
+    , memory
+    , mtl
     , transformers
 
   hs-source-dirs:   src
@@ -58,13 +58,13 @@ test-suite merkle-mountain-range-tests
     , crypton
     , deepseq
     , exceptions
-    , merkle-mountain-range
     , hspec
     , memory
+    , merkle-mountain-range
+    , mtl
     , pretty-simple
     , QuickCheck
     , text
-    , mtl
 
   hs-source-dirs:   test
   default-language: Haskell2010

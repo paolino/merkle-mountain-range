@@ -4,10 +4,10 @@ module Data.MMR.SQL
     )
 where
 
-import Data.MMR.Types ( Hash)
+import Data.MMR.Types (Hash)
 
-data Changes =
-    InsertRight Hash Hash
+data Changes
+    = InsertRight Hash Hash
     | DeleteRight Hash
     | InsertLeft Hash Hash
     | DeleteLeft Hash

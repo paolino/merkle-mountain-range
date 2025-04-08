@@ -11,7 +11,6 @@ import Data.ByteArray qualified as B
 import Data.ByteString (ByteString)
 import Data.Char (ord)
 import Data.Foldable (for_)
-import Data.Map.Strict qualified as M
 import Data.MMR.InMemory
     ( MMR
     , Status (Closed, Open)
@@ -28,6 +27,7 @@ import Data.MMR.InMemory
     )
 import Data.MMR.SQL (Changes)
 import Data.MMR.Types (mkH)
+import Data.Map.Strict qualified as M
 import Data.Sequence (Seq)
 import Data.Set qualified as Set
 import Data.Text.Lazy (Text)

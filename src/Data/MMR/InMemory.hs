@@ -40,10 +40,10 @@ import Control.Monad.Trans.Maybe (MaybeT (..), hoistMaybe)
 import Control.Monad.Writer (MonadTrans (..), MonadWriter (..))
 import Data.ByteString (ByteString)
 import Data.Foldable (Foldable (..), for_)
-import Data.Map.Strict (Map)
-import Data.Map.Strict qualified as M
 import Data.MMR.SQL (Changes (..))
 import Data.MMR.Types (Hash, Level, mkH)
+import Data.Map.Strict (Map)
+import Data.Map.Strict qualified as M
 import Data.Sequence (Seq)
 import Data.Sequence qualified as Seq
 import Data.Set (Set)

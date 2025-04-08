@@ -7,7 +7,6 @@ module Data.MMR.Types
       Hash
     , mkH
     , Level
-
     ) where
 
 import Crypto.Hash (SHA256, hash)

@@ -17,8 +17,7 @@
     let
       src = ./.;
       indexState = "2025-02-01T00:00:00Z";
-      supportedSystems =
-        [ "x86_64-linux" ];
+      supportedSystems = [ "x86_64-linux" ];
       perSystem = system:
         let
           pkgs = import nixpkgs {

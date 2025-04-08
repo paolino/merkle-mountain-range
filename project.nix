@@ -12,9 +12,7 @@ let
       ghcid = atIndex;
     };
     withHoogle = true;
-    buildInputs = [
-      pkgs.gitAndTools.git
-    ];
+    buildInputs = [ pkgs.gitAndTools.git ];
     shellHook = ''
       echo "Entering shell for merkle-mountain-range project"
     '';
