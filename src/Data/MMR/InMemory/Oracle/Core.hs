@@ -160,7 +160,10 @@ add v mmr = flip execStateT mmr $ addH 0 $ mkH v
 -- MMR.
 remove
     :: MonadWriter (Seq Change) m => ByteString -> MMR Open -> m (MMR Open)
-remove v mmr = flip execStateT mmr $ climb 0 (mkH v) >>= mapM_ (uncurry addH)
+remove v mmr = flip execStateT mmr $ do
+    let h = mkH v
+    climb 0 h >>= mapM_ (uncurry addH)
+    orphansL %= M.filter (/= h)
 
 climb
     :: (MonadWriter (Seq Change) m)

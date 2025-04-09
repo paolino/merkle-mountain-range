@@ -1,31 +1,44 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE ImportQualifiedPost #-}
+{-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module Main
     ( main
     ) where
 
-import Control.Monad (foldM, unless, void)
+import Control.Monad (foldM, foldM_, unless, void)
+import Control.Monad.Cont (ContT (..), cont, runCont)
+import Control.Monad.State.Strict (StateT (..))
 import Control.Monad.Writer (MonadIO (..), WriterT (..))
 import Data.ByteArray qualified as B
 import Data.ByteString (ByteString)
 import Data.Char (ord)
-import Data.Foldable (for_)
-import Data.MMR.InMemory.Core
+import Data.Foldable (Foldable (..), for_)
+import Data.MMR.InMemory.Oracle.Core
     ( MMR
     , Status (Closed, Open)
     , add
+    , emptyOracle
     , lefts
-    , mkMMR
     , orphans
-    , proof
     , remove
     , rights
     , seal
+    , top
     , unseal
+    )
+import Data.MMR.InMemory.Oracle.Core qualified as O
+import Data.MMR.InMemory.User.Core
+    ( Proofs (..)
+    , emptyProofs
+    , expand
+    , mkProof
     , verify
     )
-import Data.MMR.Types (Change (..), mkH)
+import Data.MMR.InMemory.User.Core qualified as U
+import Data.MMR.Types (Change (..), Hash, mkH)
 import Data.Map.Strict qualified as M
 import Data.Sequence (Seq)
 import Data.Set qualified as Set
@@ -36,6 +49,7 @@ import Test.Hspec (describe, hspec, it, shouldBe, shouldNotBe)
 import Test.QuickCheck
     ( Arbitrary (arbitrary)
     , Gen
+    , NonEmptyList (..)
     , Property
     , Testable (property)
     , choose
@@ -52,6 +66,24 @@ import Test.QuickCheck
     )
 import Text.Pretty.Simple (pPrint, pShow)
 
+type OracleM = WriterT (Seq Change) IO
+
+runOracle :: WriterT w m a -> m (a, w)
+runOracle = runWriterT
+
+feedOracle :: [ByteString] -> MMR Open -> OracleM (MMR Open)
+feedOracle xs s = foldM (flip add) s xs
+
+feedUser :: Seq Change -> StateT Proofs IO ()
+feedUser = expand . toList
+
+runUser :: b -> StateT b m a -> m (a, b)
+runUser = flip runStateT
+
+inclusion :: ByteString -> Proofs -> Maybe Hash -> Bool
+inclusion msg mt (Just r) = verify msg (mkProof msg mt) r
+inclusion _ _ Nothing = False
+
 chars :: (Word8, Word8)
 chars = (fromIntegral $ ord 'a', fromIntegral $ ord 'z')
 
@@ -63,111 +95,133 @@ messageGen cs = do
     s <- getSize
     B.pack <$> vectorOf s (choose cs)
 
-inclusion :: ByteString -> MMR Closed -> Bool
-inclusion msg mmr = verify msg (proof msg mmr) mmr
+newtype Fact = Fact {factOf :: ByteString}
+    deriving (Show, Eq)
 
-type W = WriterT (Seq Change) IO
+instance Arbitrary Fact where
+    arbitrary = Fact <$> messageGen allWord8 -- chars
 
-runW :: WriterT w m a -> m (a, w)
-runW = runWriterT
+pattern Facts :: Functor f => f ByteString -> f Fact
+pattern Facts xs <- (fmap factOf -> xs)
 
-evalW :: Functor m => WriterT w m a -> m a
-evalW = fmap fst . runW
-
-mkMMR' :: [ByteString] -> W (MMR Open)
-mkMMR' = expand mkMMR
-
-expand :: MMR Open -> [ByteString] -> W (MMR Open)
-expand = foldM (flip add)
-
-forAllMessages'
-    :: (Show a, Testable prop, B.ByteArray b)
-    => (Gen b -> Gen a)
-    -> (a -> prop)
-    -> Property
-forAllMessages' l f =
-    forAll (elements [chars, allWord8])
-        $ \cs -> forAll (g cs) f
-  where
-    g cs =
-        scale (* 25)
-            $ l (messageGen cs)
-
-forAllMessageBlocks
-    :: Testable p => ([ByteString] -> p) -> Property
-forAllMessageBlocks = forAllMessages' listOf1
-
-forAllMessages :: Testable p => (ByteString -> p) -> Property
-forAllMessages = forAllMessages' id
-
-counterexampleT :: Testable prop => Text -> prop -> Property
-counterexampleT msg = counterexample (T.unpack msg)
+arbitrary25 :: Arbitrary a => Gen a
+arbitrary25 = scale (* 25) arbitrary
 
 main :: IO ()
 main = hspec $ do
-    describe "An MMR" $ do
-        it "contains symmetric up and down mappings"
-            $ forAllMessageBlocks
-            $ \msgs -> do
-                mmr <- evalW $ mkMMR' msgs
+    describe "An user-oracle system" $ do
+        it
+            "contains symmetric up and down mappings in user and oracle systems"
+            $ forAll arbitrary25
+            $ \(Facts facts) -> do
+                (closed, update) <-
+                    runOracle $ feedOracle facts emptyOracle >>= seal
                 let roundTrips first second =
                         for_ (M.assocs first)
-                            $ \(k, v) -> do
-                                let v' = M.lookup v second
-                                Just k `shouldBe` v'
-                roundTrips (rights mmr) (lefts mmr)
-                roundTrips (lefts mmr) (rights mmr)
-        it "contains only one orphan when closed"
-            $ forAllMessageBlocks
-            $ \msgs -> do
-                mmr <- evalW $ mkMMR' msgs >>= seal
-                length (orphans mmr) `shouldBe` 1
-        it "can prove inclusion for any message in the MMR"
-            $ forAllMessageBlocks
-            $ \msgs -> do
-                (mmr, _) <- runW $ mkMMR' msgs >>= seal
-                let included = Set.fromList msgs
-                for_ msgs $ \msg -> do
-                    inclusion msg mmr `shouldBe` True
-        it "cannot prove inclusion for any message not in the MMR"
-            $ forAllMessageBlocks
-            $ \msgs -> forAllMessages $ \msg -> do
-                mmr <- evalW $ mkMMR' msgs >>= seal
-                let included = Set.fromList msgs
-                unless (Set.member msg included) $ do
-                    inclusion msg mmr `shouldBe` False
-        it "can change between open and close seamlessly"
-            $ forAllMessageBlocks
-            $ \msgs -> evalW $ do
-                open0 <- mkMMR' msgs
-                close0 <- seal open0
-                open1 <- unseal close0
-                liftIO $ open0 `shouldBe` open1
-        it "can be expanded with new messages after close and open"
-            $ forAllMessageBlocks
-            $ \msgs ->
-                forAllMessageBlocks $ \newMsgs -> evalW $ do
-                    open0 <- mkMMR' msgs
-                    close0 <- seal open0
-                    open1 <- unseal close0
-                    open2 <- expand open1 newMsgs
-                    close1 <- seal open2
-                    liftIO $ for_ (msgs <> newMsgs) $ \msg ->
-                        inclusion msg close1 `shouldBe` True
-        it "cannot prove inclusion of deleted messages"
-            $ forAllMessageBlocks
-            $ \msgs -> forAll (elements msgs)
-                $ \msg -> evalW $ do
-                    open0 <- mkMMR' msgs
-                    open1 <- remove msg open0
-                    close1 <- seal open1
-                    liftIO $ inclusion msg close1 `shouldBe` False
-        it "can still prove inclusion of other messages after deletion"
-            $ forAllMessageBlocks
-            $ \msgs -> forAll (elements msgs)
-                $ \msg -> evalW $ do
-                    open0 <- mkMMR' msgs
-                    open1 <- remove msg open0
-                    close1 <- seal open1
-                    liftIO $ for_ (Set.delete msg (Set.fromList msgs)) $ \m ->
-                        inclusion m close1 `shouldBe` True
+                            $ \(k, v) -> Just k `shouldBe` M.lookup v second
+                roundTrips (O.rights closed) (O.lefts closed)
+                roundTrips (O.lefts closed) (O.rights closed)
+                (_, proofs) <- runUser emptyProofs $ feedUser update
+                roundTrips (U.rights proofs) (U.lefts proofs)
+                roundTrips (U.lefts proofs) (U.rights proofs)
+
+        it "keep the same merkle tree in both user and oracle systems"
+            $ forAll arbitrary25
+            $ \(Facts facts) -> do
+                (closed, updates) <-
+                    runOracle
+                        $ feedOracle facts emptyOracle >>= seal
+                ((), proofs) <- runUser emptyProofs $ feedUser updates
+                O.rights closed `shouldBe` U.rights proofs
+                O.lefts closed `shouldBe` U.lefts proofs
+
+        it "contains only one orphan in the oracle when closed"
+            $ forAll arbitrary25
+            $ \(Facts facts) -> do
+                (closed, _) <- runOracle $ feedOracle facts emptyOracle >>= seal
+                case facts of
+                    [] -> length (orphans closed) `shouldBe` 0
+                    _ -> length (orphans closed) `shouldBe` 1
+
+        it "can change the oracle between sealed and unsealed"
+            $ forAll arbitrary25
+            $ \(Facts facts) -> void $ runOracle $ do
+                fedup <- feedOracle facts emptyOracle
+                sealed <- seal fedup
+                unsealed <- unseal sealed
+                liftIO $ fedup `shouldBe` unsealed
+
+        it "can prove inclusions of all facts of one day"
+            $ forAll arbitrary25
+            $ \(Facts facts) -> do
+                ((mroot, sealed), updates) <- runOracle $ do
+                    fedup <- feedOracle facts emptyOracle
+                    sealed <- seal fedup
+                    pure (top sealed, sealed)
+                ((), proofs) <- runUser emptyProofs $ feedUser updates
+                for_ facts $ \msg -> do
+                    inclusion msg proofs mroot `shouldBe` True
+
+        it "can prove inclusions of all facts of two days"
+            $ forAll arbitrary25
+            $ \(Facts factsOfDay1) -> forAll arbitrary25
+                $ \(Facts factsOfDay2) -> do
+                    ((mrootDay1, sealedDay1), updatesDay1) <- runOracle $ do
+                        fed <- feedOracle factsOfDay1 emptyOracle
+                        sealed <- seal fed
+                        pure (top sealed, sealed)
+                    ((), proofsDay1) <-
+                        runUser emptyProofs
+                            $ feedUser updatesDay1
+                    (mrootDay2, updatesDay2) <- runOracle $ do
+                        unsealed <- unseal sealedDay1
+                        fed <- feedOracle factsOfDay2 unsealed
+                        sealed <- seal fed
+                        pure (top sealed)
+                    ((), proofsDay2) <-
+                        runUser proofsDay1
+                            $ feedUser updatesDay2
+                    for_ (factsOfDay1 <> factsOfDay2) $ \msg -> do
+                        inclusion msg proofsDay2 mrootDay2 `shouldBe` True
+
+        it
+            "can prove exclusion of facts which were not fed into the oracle"
+            $ forAll arbitrary25
+            $ \(Facts facts) -> forAll arbitrary25
+                $ \(Facts nonFacts) -> do
+                    ((mroot, _), updates) <- runOracle $ do
+                        let unsealed = emptyOracle
+                        fedup <- feedOracle facts unsealed
+                        sealed <- seal fedup
+                        pure (top sealed, sealed)
+                    ((), proofs) <- runUser emptyProofs $ feedUser updates
+                    let included = Set.fromList facts
+                    for_ @[] nonFacts $ \msg -> do
+                        unless (Set.member msg included) $ do
+                            inclusion msg proofs mroot `shouldBe` False
+
+        it "can prove exclusion of deleted facts in the same day"
+            $ forAll arbitrary25
+            $ \(NonEmpty (Facts facts)) -> forAll (elements facts)
+                $ \toBeDeletedFact -> do
+                    ((mroot, sealed), updates) <- runOracle $ do
+                        fed <- feedOracle facts emptyOracle
+                        pruned <- remove toBeDeletedFact fed
+                        sealed <- seal pruned
+                        pure (top sealed, sealed)
+                    ((), proofs) <- runUser emptyProofs $ feedUser updates
+                    inclusion toBeDeletedFact proofs mroot `shouldBe` False
+
+        it "can still prove inclusion of other facts after deletion of one"
+            $ forAll arbitrary25
+            $ \(NonEmpty (Facts facts)) -> forAll (elements facts)
+                $ \toBeDeletedFact -> do
+                    ((mroot, sealed), updates) <- runOracle $ do
+                        fed <- feedOracle facts emptyOracle
+                        pruned <- remove toBeDeletedFact fed
+                        sealed <- seal pruned
+                        pure (top sealed, sealed)
+                    ((), proofs) <- runUser emptyProofs $ feedUser updates
+                    let included = Set.fromList facts
+                    for_ (Set.delete toBeDeletedFact included) $ \msg -> do
+                        inclusion msg proofs mroot `shouldBe` True

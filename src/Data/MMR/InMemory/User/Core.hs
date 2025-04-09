@@ -26,6 +26,7 @@ data Proofs = Proofs
     { rights :: Map Hash Hash
     , lefts :: Map Hash Hash
     }
+    deriving (Show, Eq)
 
 emptyProofs :: Proofs
 emptyProofs = Proofs mempty mempty
