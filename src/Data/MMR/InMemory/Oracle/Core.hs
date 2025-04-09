@@ -80,8 +80,8 @@ type family OnClosed (a :: Status) where
 -- The 2 state are isomorphic, so we can go from one to the other via 'close'
 -- and 'open'.
 data MMR (a :: Status) = MMR
-    { rights :: Map Hash Hash
-    , lefts :: Map Hash Hash
+    { rights :: Map Hash (Hash, Hash)
+    , lefts :: Map Hash (Hash, Hash)
     , orphans :: Map Level Hash
     , seam :: OnClosed a
     }
@@ -89,32 +89,28 @@ data MMR (a :: Status) = MMR
 deriving instance (Show (OnClosed a)) => Show (MMR a)
 deriving instance (Eq (OnClosed a)) => Eq (MMR a)
 
-rightsL :: Lens' (MMR a) (Map Hash Hash)
+rightsL :: Lens' (MMR a) (Map Hash (Hash, Hash))
 rightsL f mmr@MMR{rights} = (\rights' -> mmr{rights = rights'}) <$> f rights
 
-leftsL :: Lens' (MMR a) (Map Hash Hash)
+leftsL :: Lens' (MMR a) (Map Hash (Hash, Hash))
 leftsL f mmr@MMR{lefts} = (\lefts' -> mmr{lefts = lefts'}) <$> f lefts
 
 orphansL :: Lens' (MMR a) (Map Level Hash)
 orphansL f mmr@MMR{orphans} = (\orphans' -> mmr{orphans = orphans'}) <$> f orphans
 
-insertRight
-    :: MonadWriter (Seq Change) m => Hash -> Hash -> StateT (MMR a) m ()
-insertRight h h' = do
-    push $ InsertRight h h'
-    rightsL %= M.insert h h'
+insert
+    :: MonadWriter (Seq Change) m
+    => Hash -> Hash -> Hash -> StateT (MMR a) m ()
+insert h h' hh' = do
+    push $ Insert h h' hh'
+    rightsL %= M.insert h (h', hh')
+    leftsL %= M.insert h' (h, hh')
 
 deleteRight
     :: MonadWriter (Seq Change) m => Hash -> StateT (MMR a) m ()
 deleteRight h = do
     push $ DeleteRight h
     rightsL %= M.delete h
-
-insertLeft
-    :: MonadWriter (Seq Change) m => Hash -> Hash -> StateT (MMR a) m ()
-insertLeft h h' = do
-    push $ InsertLeft h h'
-    leftsL %= M.insert h h'
 
 deleteLeft
     :: MonadWriter (Seq Change) m => Hash -> StateT (MMR a) m ()
@@ -146,8 +142,7 @@ addH l h = do
                 insertOrphan l h
         Just h' -> do
             deleteOrphan l
-            insertRight h' h
-            insertLeft h h'
+            insert h' h (h' <> h)
             addH (l + 1) (h' <> h)
 
 -- | Add a new element to the MMR. The element is hashed and stored in the
@@ -177,15 +172,15 @@ climb l h = do
             Nothing -> do
                 deleteOrphan l
                 pure []
-            Just h' -> do
+            Just (h', h'h) -> do
                 deleteLeft h
                 deleteRight h'
-                rest <- climb (l + 1) (h' <> h)
+                rest <- climb (l + 1) h'h
                 pure $ (l, h') : rest
-        Just h' -> do
+        Just (h', hh') -> do
             deleteRight h
             deleteLeft h'
-            rest <- climb (l + 1) (h <> h')
+            rest <- climb (l + 1) hh'
             pure $ (l, h') : rest
 
 -- | Get the root hash of the MMR. The root hash is the hash of the entire MMR
@@ -215,14 +210,14 @@ closing = do
     MMR{orphans} <- get
     (l, r) <- hoistMaybe $ M.lookupMin orphans
     (l', r') <- hoistMaybe $ M.lookupMin $ M.delete l orphans
+    let r'r = r' <> r
     lift $ do
         seamL . removeRighsL %= Set.insert r'
         seamL . removeLeftsL %= Set.insert r
         deleteOrphan l
         deleteOrphan l'
-        insertRight r' r
-        insertLeft r r'
-        insertOrphan (l + 1) (r' <> r)
+        insert r' r r'r
+        insertOrphan (l + 1) r'r
     closing
 
 -- | Seam the MMR by removing the orphan nodes and making sure all nodes are

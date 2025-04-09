@@ -32,14 +32,10 @@ mkUser = do
         { update = update'
         , proof = proof'
         , search = undefined
-        , serializeUser = serializeUser'
         }
   where
     update' = expand
     proof' v = mkProof v <$> get
-    serializeUser' = do
-        ps <- get
-        pure (rights ps, lefts ps)
 
 withProofs
     :: TVar Proofs
@@ -58,7 +54,6 @@ newUser = do
             { update = update'
             , proof = proof'
             , search = search'
-            , serializeUser = serializeUser'
             } = mkUser
     pure
         $ User
@@ -67,5 +62,4 @@ newUser = do
             , search = \b -> do
                 r <- withProofs q $ search' b
                 pure $ hoistResult (withProofs q) r
-            , serializeUser = withProofs q serializeUser'
             }

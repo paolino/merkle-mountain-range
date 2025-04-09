@@ -73,7 +73,8 @@ coreSpecs = do
                     runOracle $ feedOracle facts emptyOracle >>= seal
                 let roundTrips first second =
                         for_ (M.assocs first)
-                            $ \(k, v) -> Just k `shouldBe` M.lookup v second
+                            $ \(k, (v, _)) ->
+                                Just k `shouldBe` (fst <$> M.lookup v second)
                 roundTrips (O.rights closed) (O.lefts closed)
                 roundTrips (O.lefts closed) (O.rights closed)
                 (_, proofs) <- runUser emptyProofs $ feedUser update

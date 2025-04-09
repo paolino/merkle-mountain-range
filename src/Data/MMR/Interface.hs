@@ -4,7 +4,6 @@ module Data.MMR.Interface
 where
 
 import Data.MMR.Types (Change, Hash, Proof)
-import Data.Map.Strict (Map)
 
 data OracleError
     = OracleIsClosed
@@ -20,7 +19,6 @@ data Oracle m d = Oracle
     , close :: m (E [Change])
     , open :: m (E [Change])
     , root :: m (E Hash)
-    , serializeOracle :: m (E (Map Hash Hash, Map Hash Hash))
     }
 
 data Result m d = NoMoreResults | Result d (m (Result m d))
@@ -35,5 +33,4 @@ data User m d = User
     { update :: [Change] -> m ()
     , proof :: d -> m Proof
     , search :: (d -> Bool) -> m (Result m d)
-    , serializeUser :: m (Map Hash Hash, Map Hash Hash)
     }

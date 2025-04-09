@@ -18,5 +18,5 @@ import Test.InterfaceSpec (interfaceSpecs)
 
 inMemorySpecs :: IO ()
 inMemorySpecs = do
-    hspec $ beforeAll (pure (newOracle, newUser)) interfaceSpecs
     hspec coreSpecs
+    hspec $ beforeAll (pure (newOracle, newUser)) interfaceSpecs

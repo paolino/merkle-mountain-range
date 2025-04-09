@@ -55,7 +55,6 @@ mkOracle = do
         , close = close'
         , open = open'
         , root = root'
-        , serializeOracle = serialize'
         }
   where
     insert' v = do
@@ -98,12 +97,6 @@ mkOracle = do
                 case top closedMMR of
                     Nothing -> pure $ Left OracleIsEmpty
                     Just r -> pure $ Right r
-    serialize' = do
-        anMMR <- get
-        case anMMR of
-            Left _ -> pure $ Left OracleIsOpen
-            Right closedMMR -> do
-                pure $ Right (rights closedMMR, lefts closedMMR)
 
 withOracleState
     :: TVar OracleState -> PureOracleMonad STM a -> IO a
@@ -122,7 +115,6 @@ newOracle = do
             , close = close'
             , open = open'
             , root = root'
-            , serializeOracle = serialize'
             } = mkOracle
     pure
         $ Oracle
@@ -131,5 +123,4 @@ newOracle = do
             , close = withOracleState s close'
             , open = withOracleState s open'
             , root = withOracleState s root'
-            , serializeOracle = withOracleState s serialize'
             }

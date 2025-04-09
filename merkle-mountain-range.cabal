@@ -16,7 +16,6 @@ extra-doc-files: CHANGELOG.md
 common warnings
   ghc-options:
     -Wall -Wunused-imports -Wunused-packages -Wredundant-constraints
-    -Werror
 
 library
   import:           warnings

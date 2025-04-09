@@ -33,9 +33,8 @@ newtype Level = Level
     deriving (Eq, Ord, Show, Num, Enum, Real, Integral)
 
 data Change
-    = InsertRight Hash Hash
+    = Insert Hash Hash Hash
     | DeleteRight Hash
-    | InsertLeft Hash Hash
     | DeleteLeft Hash
     deriving (Eq, Ord, Show)
 
