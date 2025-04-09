@@ -6,6 +6,8 @@
 
 module Data.MMR.InMemory.Oracle
     ( newOracle
+    , mkOracle
+    , Oracle (..)
     ) where
 
 import Control.Concurrent.STM
@@ -16,7 +18,7 @@ import Control.Concurrent.STM
     , readTVar
     , writeTVar
     )
-import Control.Monad.State (MonadState (..), StateT (..))
+import Control.Monad.State.Strict (MonadState (..), StateT (..))
 import Control.Monad.Writer
     ( WriterT (..)
     )

@@ -4,6 +4,8 @@ module Data.MMR.InMemory.User
     ( newUser
     , PureUser
     , verify
+    , mkUser
+    , User (..)
     ) where
 
 import Control.Concurrent.STM (TVar, newTVarIO, readTVar, writeTVar)

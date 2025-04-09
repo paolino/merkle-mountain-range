@@ -16,6 +16,7 @@ extra-doc-files: CHANGELOG.md
 common warnings
   ghc-options:
     -Wall -Wunused-imports -Wunused-packages -Wredundant-constraints
+    -Werror
 
 library
   import:           warnings
@@ -44,31 +45,28 @@ library
 executable merkle-mountain-range
   import:           warnings
   main-is:          Main.hs
-  build-depends:
-    , base
-    , merkle-mountain-range
-
+  build-depends:    base
   hs-source-dirs:   app
   default-language: Haskell2010
 
 test-suite merkle-mountain-range-tests
-  type:             exitcode-stdio-1.0
   import:           warnings
+  type:             exitcode-stdio-1.0
   main-is:          Main.hs
   build-depends:
     , base
     , bytestring
     , containers
-    , crypton
-    , deepseq
-    , exceptions
     , hspec
     , memory
     , merkle-mountain-range
     , mtl
-    , pretty-simple
     , QuickCheck
-    , text
 
   hs-source-dirs:   test
   default-language: Haskell2010
+  other-modules:
+    Test.Generate
+    Test.InMemory.CoreSpec
+    Test.InMemorySpec
+    Test.InterfaceSpec
