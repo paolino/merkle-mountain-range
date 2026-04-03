@@ -7,7 +7,9 @@ module Data.MMR.Types
       Hash
     , mkH
     , Level
-
+    , Change (..)
+    , Combine (..)
+    , Proof
     ) where
 
 import Crypto.Hash (SHA256, hash)
@@ -29,3 +31,15 @@ newtype Level = Level
     { getLevel :: Int
     }
     deriving (Eq, Ord, Show, Num, Enum, Real, Integral)
+
+data Change
+    = Insert Hash Hash Hash
+    | DeleteRight Hash
+    | DeleteLeft Hash
+    deriving (Eq, Ord, Show)
+
+-- | A proof step
+data Combine = Prepend Hash | Append Hash
+    deriving (Show)
+
+type Proof = [Combine]

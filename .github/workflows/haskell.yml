@@ -10,7 +10,7 @@ jobs:
   tests:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - uses: cachix/install-nix-action@v31
       with:
         github_access_token: ${{ secrets.GITHUB_TOKEN }}
@@ -22,10 +22,31 @@ jobs:
       run: |
         nix build .#merkle-mountain-range-tests
         ./result/bin/merkle-mountain-range-tests
+
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v6
+    - uses: cachix/install-nix-action@v31
+      with:
+        github_access_token: ${{ secrets.GITHUB_TOKEN }}
+    - uses: cachix/cachix-action@v14
+      with:
+        name: ${{ env.CACHIX_REPO }}
+        authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+    - name: Run checks
+      run: |
+        nix shell .#nixfmt -c \
+          find . -name '*.nix' -exec nixfmt -c {} +
+        nix shell .#fourmolu -c \
+          fourmolu -c $(find . -name '*.hs')
+        nix shell .#cabal-fmt -c \
+          cabal-fmt -c $(find . -name '*.cabal')
+
   builds:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - uses: cachix/install-nix-action@v31
       with:
         github_access_token: ${{ secrets.GITHUB_TOKEN }}
@@ -41,7 +62,7 @@ jobs:
   bundles:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - uses: cachix/install-nix-action@v31
       with:
         github_access_token: ${{ secrets.GITHUB_TOKEN }}
@@ -56,7 +77,7 @@ jobs:
         cp -L merkle-mountain-range-exe-merkle-mountain-range-arx merkle-mountain-range
         rm merkle-mountain-range-exe-merkle-mountain-range-arx
     - name: Archive merkle-mountain-range
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: merkle-mountain-range
         path: |
@@ -68,7 +89,7 @@ jobs:
               ./merkle-mountain-range-docker-image.tar.gz
             rm ./merkle-mountain-range-exe-merkle-mountain-range-${{ env.VERSION }}.tar.gz
     - name: Archive merkle-mountain-range docker-image
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: merkle-mountain-range-docker-image
         path: |

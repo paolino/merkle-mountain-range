@@ -1,10 +1,7 @@
 {
   inputs = {
     haskellNix = { url = "github:input-output-hk/haskell.nix"; };
-    nixpkgs = {
-      url = "github:NixOS/nixpkgs";
-      follows = "haskellNix/nixpkgs-unstable";
-    };
+    nixpkgs.follows = "haskellNix/nixpkgs-unstable";
     iohkNix = {
       url = "github:input-output-hk/iohk-nix";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -17,8 +14,7 @@
     let
       src = ./.;
       indexState = "2025-02-01T00:00:00Z";
-      supportedSystems =
-        [ "x86_64-linux" ];
+      supportedSystems = [ "x86_64-linux" ];
       perSystem = system:
         let
           pkgs = import nixpkgs {
